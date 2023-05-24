@@ -1,13 +1,19 @@
 import json
-from typing import Optional
-from pydantic import Extra, Field
+from typing import Any, Dict, Optional
+from pydantic import Extra, Field, root_validator
 
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForToolRun,
     CallbackManagerForToolRun,
 )
 from langchain.tools.base import BaseTool
+from langchain.tools.graphql.prompt import QUERY_CHECKER
 from langchain.utilities.graphql import GraphQLAPIWrapper
+from langchain.base_language import BaseLanguageModel
+from langchain.chains.llm import LLMChain
+from langchain.prompts import PromptTemplate
+
+
 
 NOT_IMPLEMENTED_ASYNC = "This tool does not support async"
 
@@ -90,3 +96,48 @@ class SchemaGraphQLTool(BaseGraphQLTool):
     async def _arun(self, type_name: str, 
                     run_manager: Optional[AsyncCallbackManagerForToolRun] = None) -> str:
         raise NotImplementedError(NOT_IMPLEMENTED_ASYNC)
+
+
+class QueryCheckerTool(BaseGraphQLTool):
+    """Use an LLM to check if a query is correct for GraphQL."""
+
+    template: str = QUERY_CHECKER
+    llm: BaseLanguageModel
+    llm_chain: LLMChain = Field(init=False)
+    name = "query_checker_graphql"
+    description = """
+    Use this tool to double check if your GraphQL query is correct before executing it.
+    Always use this tool before executing a query with run_graphql_query!
+    """
+
+    @root_validator(pre=True)
+    def initialize_llm_chain(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if "llm_chain" not in values:
+            values["llm_chain"] = LLMChain(
+                llm=values.get("llm"),
+                prompt=PromptTemplate(
+                    template=QUERY_CHECKER, input_variables=["query"]
+                ),
+            )
+
+        if values["llm_chain"].prompt.input_variables != ["query"]:
+            raise ValueError(
+                "LLM chain for QueryCheckerTool must have input variables ['query']"
+            )
+
+        return values
+
+    def _run(
+        self,
+        query: str,
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+    ) -> str:
+        """Use the LLM to check the query."""
+        return self.llm_chain.predict(query=query)
+
+    async def _arun(
+        self,
+        query: str,
+        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
+    ) -> str:
+        return await self.llm_chain.apredict(query=query)
