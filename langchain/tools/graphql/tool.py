@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+from pydantic import Extra, Field
 
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForToolRun,
@@ -10,10 +11,21 @@ from langchain.utilities.graphql import GraphQLAPIWrapper
 
 NOT_IMPLEMENTED_ASYNC = "This tool does not support async"
 
+
 class BaseGraphQLTool(BaseTool):
     """Base tool for querying a GraphQL API."""
 
-    graphql_wrapper: GraphQLAPIWrapper
+    graphql_wrapper: GraphQLAPIWrapper = Field(exclude=True)
+
+    class Config(BaseTool.Config):
+        """Configuration for this pydantic object."""
+
+        arbitrary_types_allowed = True
+        extra = Extra.forbid
+
+
+class QueryGraphQLTool(BaseGraphQLTool):
+    """Tool for querying a GraphQL API."""
 
     name = "query_graphql"
     description = """\
@@ -24,11 +36,6 @@ class BaseGraphQLTool(BaseTool):
 
     Example Input: query {{ allUsers {{ id, name, email }} }}\
     """  # noqa: E501
-
-    class Config:
-        """Configuration for this pydantic object."""
-
-        arbitrary_types_allowed = True
 
     def _run(
         self,
@@ -58,28 +65,9 @@ class ListTablesGraphQLTool(BaseGraphQLTool):
     def _run(self, tool_input: str = "", 
              run_manager: Optional[CallbackManagerForToolRun] = None) -> str:
         """Return a comma-separated list of type names from the GraphQL API."""
-        return ", ".join(self.graphql_wrapper.get_type_names())
+        return ", ".join(self.graphql_wrapper.get_type_names()) 
 
     async def _arun(self, tool_input: str = "", 
-                    run_manager: Optional[AsyncCallbackManagerForToolRun] = None) -> str:
-        raise NotImplementedError(NOT_IMPLEMENTED_ASYNC)
-
-
-class QueryGraphQLTool(BaseGraphQLTool):
-    """Tool for executing queries on a GraphQL API."""
-
-    name: str = "query_graphql"
-    description: str = (
-        "This tool receives a detailed and correct GraphQL query and returns the result from the API."
-        " If the query is incorrect, it returns an error message."
-    )
-
-    def _run(self, query: str, 
-             run_manager: Optional[CallbackManagerForToolRun] = None) -> str:
-        """Execute the query and return the results or an error message in JSON format."""
-        return json.dumps(self.graphql_wrapper.run(query), indent=2)
-
-    async def _arun(self, query: str, 
                     run_manager: Optional[AsyncCallbackManagerForToolRun] = None) -> str:
         raise NotImplementedError(NOT_IMPLEMENTED_ASYNC)
 
