@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Extra, root_validator
 
@@ -52,3 +52,66 @@ class GraphQLAPIWrapper(BaseModel):
         document_node = self.gql_function(query)
         result = self.gql_client.execute(document_node)
         return result
+
+    
+    def get_type_names(self) -> List[str]:
+        """Fetch and return the names of all types in the GraphQL API."""
+
+        introspection_query = '''
+        query IntrospectionQuery {
+          __schema {
+            types {
+              name
+            }
+          }
+        }
+        '''
+        result = self._execute_query(introspection_query)
+
+        type_names = []
+        for type_ in result['__schema']['types']:
+            type_names.append(type_['name'])
+
+        return type_names
+
+    def get_type_info(self, type_names: List[str]) -> Dict[str, Any]:
+        """Fetch and return the schema for given types."""
+
+        introspection_query = '''
+        query IntrospectionQuery {
+          __schema {
+            types {
+              name
+              kind
+              fields {
+                name
+                type {
+                  name
+                  kind
+                  ofType {
+                    name
+                    kind
+                  }
+                }
+              }
+            }
+          }
+        }
+        '''
+        result = self._execute_query(introspection_query)
+
+        type_info = {}
+        for type_ in result['__schema']['types']:
+            if type_['name'] in type_names:
+                type_info[type_['name']] = {
+                    'kind': type_['kind'],
+                    'fields': [
+                        {
+                            'name': field['name'],
+                            'type': field['type']['name'] or (field['type']['ofType']['name'] if field['type']['ofType'] else None)
+                        } 
+                        for field in type_['fields']
+                    ] if 'fields' in type_ else []
+                }
+
+        return type_info
